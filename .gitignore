@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+.venv/
+*.sqlite3
+*.wav
+*.mp3
+*.m4a
+.DS_Store
