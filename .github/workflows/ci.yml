@@ -3,6 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, unlabeled]
 permissions:
   contents: read
 jobs:
@@ -15,3 +16,29 @@ jobs:
         with:
           python-version: '3.x'
       - run: python scripts/check_repository.py
+  automerge:
+    # ADR 0009 (vibecosmic/aos): merge automatically once every CI job passed.
+    # Same-repository PRs only (never forks); skip drafts and held PRs; merge
+    # exactly the tested head commit; one merge at a time per repository.
+    needs: [metadata]
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft &&
+      !contains(github.event.pull_request.labels.*.name, 'aos:hold') &&
+      !contains(github.event.pull_request.labels.*.name, 'aos:no-automerge')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: automerge-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - run: gh pr merge "$PR" --repo "$REPO" --squash --match-head-commit "$SHA"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
