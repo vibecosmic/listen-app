@@ -22,7 +22,7 @@ jobs:
             echo "::notice::Flutter project is not yet committed (F001); web validation is pending."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: subosito/flutter-action@fdc1e0f5c4a76c6bde59a3d3d3bfa1b8e6a10f6a # v2.21.0
+      - uses: subosito/flutter-action@v2
         if: steps.project.outputs.ready == 'true'
         with:
           channel: stable
