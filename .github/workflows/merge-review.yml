@@ -1,0 +1,35 @@
+name: Recheck merge decision
+on:
+  issue_comment:
+    types: [created, edited]
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: write
+jobs:
+  recheck:
+    if: github.event.issue.pull_request && startsWith(github.event.comment.body, '<!-- aos:merge-decision:v1 -->')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    concurrency:
+      group: merge-decision-${{ github.event.issue.number }}
+      cancel-in-progress: false
+    steps:
+      # No checkout or execution of PR code. Only trusted writers can request a rerun.
+      - shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.sender.login }}
+        run: |
+          set -euo pipefail
+          permission=$(gh api "repos/$REPO/collaborators/$ACTOR/permission" --jq .permission)
+          case "$permission" in admin|maintain|write) ;; *) exit 0 ;; esac
+          sha=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+          run=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?event=pull_request&head_sha=$sha&per_page=1" --jq '.workflow_runs[0] | if .status == "completed" and (.conclusion == "failure" or .conclusion == "cancelled") then .id else empty end')
+          if [[ "$run" =~ ^[1-9][0-9]*$ ]]; then
+            # Reuse passed test jobs; only failed jobs (normally the waiting gate) rerun.
+            gh api --method POST "repos/$REPO/actions/runs/$run/rerun-failed-jobs"
+          fi
