@@ -10,6 +10,10 @@ their own device, with subtitles (fetched or generated), sentence segmentation, 
 and A-B repeat, transcript toggle, and tap-to-look-up words (Japanese word
 segmentation). Shadowing comes later. Built with Flutter (team default stack); the backend is Go.
 
+Delivery: the Flutter app also targets web. CI on the development branch (`main`, which every
+PR merges into) builds the web version and publishes it to the team test server; the test
+server is a team asset to be provisioned later. Production releases are a separate, later step.
+
 Constraints:
 - Sign-in uses the shared account service via OIDC (authorization code + PKCE S256);
   no separate auth system in the frontend.
