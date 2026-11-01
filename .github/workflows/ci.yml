@@ -3,7 +3,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
 permissions:
   contents: read
 jobs:
@@ -16,8 +16,9 @@ jobs:
         with:
           python-version: '3.x'
       - run: python scripts/check_repository.py
+      - run: python -m unittest discover -s tests -p test_merge_gate.py
   automerge:
-    # ADR 0009 (vibecosmic/aos): merge automatically once every CI job passed.
+    # CI executes merge after the current-head risk/acceptance gate passes.
     # Same-repository PRs only (never forks); skip drafts and held PRs; merge
     # exactly the tested head commit; one merge at a time per repository.
     needs: [metadata]
@@ -32,10 +33,37 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: read
     concurrency:
       group: automerge-${{ github.repository }}
       cancel-in-progress: false
     steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.x'
+      - name: Validate current-head merge decision
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -f scripts/merge_gate.py ]]; then
+            python scripts/merge_gate.py
+          elif [[ "$(git rev-parse HEAD)" == "37d2eea6b6f8646a91e255378dc7d67dc57ece63" ]]; then
+            # One-time rollout authorized by the Operator's agile-review instruction.
+            # Only this exact trusted base predates the gate; no general fallback.
+            echo "Authorized first installation; existing CI merge policy applies."
+          else
+            echo "Trusted merge gate missing; refusing merge." >&2
+            exit 1
+          fi
       - run: gh pr merge "$PR" --repo "$REPO" --squash --match-head-commit "$SHA"
         env:
           GH_TOKEN: ${{ github.token }}

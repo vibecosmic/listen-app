@@ -11,3 +11,10 @@ Stack: Flutter (team default). Always use the latest stable Flutter/Dart and pac
 Qualify cross-repository references with the full repository name. Do not commit
 unlicensed audio or text. Commit messages and user-facing docs in Chinese; code and
 identifiers in English.
+
+## Agile acceptance
+Follow .github/MERGE_POLICY.md and current control rules. Author acceptance is
+allowed only for eligible small reversible changes; ordinary work gets rapid
+independent review with one repair pass, then Director disposition. P2 nits become
+follow-ups. CI checks current-head decisions and protected authority before merging.
+Never manually merge or remove another owner's hold; no deployment is authorized.
