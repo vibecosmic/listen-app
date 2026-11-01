@@ -8,8 +8,7 @@ Goal: a mobile listening-practice app for English and Japanese learners (childre
 adults). Focus: sentence-by-sentence intensive listening on media the user saves to
 their own device, with subtitles (fetched or generated), sentence segmentation, loop
 and A-B repeat, transcript toggle, and tap-to-look-up words (Japanese word
-segmentation). Shadowing comes later. Framework and media pipeline are still being
-researched; do not lock them in before that research is reviewed.
+segmentation). Shadowing comes later. Built with Flutter (team default stack); the backend is Go.
 
 Constraints:
 - Sign-in uses the shared account service via OIDC (authorization code + PKCE S256);
