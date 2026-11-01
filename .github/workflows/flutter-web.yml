@@ -1,0 +1,49 @@
+name: Flutter web validation
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  flutter-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Check Flutter project is present
+        id: project
+        shell: bash
+        run: |
+          if [[ -f pubspec.yaml && -f pubspec.lock && -f web/index.html ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Flutter project is not yet committed (F001); web validation is pending."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: subosito/flutter-action@fdc1e0f5c4a76c6bde59a3d3d3bfa1b8e6a10f6a # v2.21.0
+        if: steps.project.outputs.ready == 'true'
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve locked dependencies
+        if: steps.project.outputs.ready == 'true'
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze
+        if: steps.project.outputs.ready == 'true'
+        run: flutter analyze
+      - name: Test
+        if: steps.project.outputs.ready == 'true'
+        run: flutter test
+      - name: Build web
+        if: steps.project.outputs.ready == 'true'
+        run: flutter build web --release
+      - name: Upload web build
+        if: steps.project.outputs.ready == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: flutter-web-${{ github.sha }}
+          path: build/web/
+          if-no-files-found: error
+          retention-days: 7
