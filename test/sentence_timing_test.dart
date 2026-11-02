@@ -11,7 +11,9 @@ void main() {
   test('half-open cue boundaries and gaps', () {
     expect(timeline.at(0), 0);
     expect(timeline.at(999), 0);
-    expect(timeline.at(1000), 1);
+    expect(timeline.at(1000), 0);
+    expect(timeline.at(1199), 0);
+    expect(timeline.at(1200), 1);
     expect(timeline.at(2199), 1);
     expect(timeline.at(2200), 2);
     expect(timeline.at(5000), 2);
