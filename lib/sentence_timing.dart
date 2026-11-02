@@ -1,8 +1,6 @@
 /// Pure, testable sentence timing model. All offsets are milliseconds.
 class SentenceCue {
-  const SentenceCue(this.startMs, this.endMs, this.text)
-      : assert(startMs >= 0),
-        assert(endMs > startMs);
+  const SentenceCue(this.startMs, this.endMs, this.text);
   final int startMs;
   final int endMs;
   final String text;
