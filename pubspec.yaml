@@ -1,0 +1,18 @@
+name: listen_player
+description: Offline sentence listening prototype (synthetic assets only).
+publish_to: none
+version: 0.1.0+1
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  just_audio: ^0.10.5
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/sentences_en.json
+    - assets/sentences_ja.json
