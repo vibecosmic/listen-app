@@ -26,6 +26,7 @@ class SentenceTimeline {
   int at(int positionMs) {
     if (positionMs <= cues.first.startMs) return 0;
     for (var i = 0; i < cues.length; i++) {
+      if (positionMs < cues[i].startMs) return i - 1;
       if (positionMs < cues[i].endMs) return i;
     }
     return cues.length - 1;
