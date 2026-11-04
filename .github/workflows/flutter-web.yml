@@ -16,10 +16,11 @@ jobs:
         id: project
         shell: bash
         run: |
-          if [[ -f pubspec.yaml && -f pubspec.lock && -f web/index.html ]]; then
+          if [[ -f pubspec.yaml ]]; then
+            [[ -f web/index.html ]] || { echo "::error::web/index.html missing"; exit 1; }
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Flutter project is not yet committed (F001); web validation is pending."
+            echo "::notice::No pubspec.yaml; Flutter project not yet present."
             echo "ready=false" >> "$GITHUB_OUTPUT"
           fi
       - uses: subosito/flutter-action@v2
@@ -27,9 +28,31 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Resolve locked dependencies
+      - name: Generate or verify dependency lockfile
         if: steps.project.outputs.ready == 'true'
-        run: flutter pub get --enforce-lockfile
+        id: deps
+        shell: bash
+        run: |
+          if [[ -f pubspec.lock ]]; then
+            flutter pub get --enforce-lockfile
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+          else
+            flutter pub get
+            echo "generated=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload generated lockfile for author commit
+        if: steps.project.outputs.ready == 'true' && steps.deps.outputs.generated == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: flutter-pubspec-lock-${{ github.sha }}
+          path: pubspec.lock
+          if-no-files-found: error
+          retention-days: 7
+      - name: Require committed lockfile
+        if: steps.project.outputs.ready == 'true' && steps.deps.outputs.generated == 'true'
+        run: |
+          echo "::error::pubspec.lock is missing. Download the generated lockfile artifact and commit it to this PR branch."
+          exit 1
       - name: Analyze
         if: steps.project.outputs.ready == 'true'
         run: flutter analyze
