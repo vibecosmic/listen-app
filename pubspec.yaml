@@ -8,6 +8,7 @@ dependencies:
   flutter:
     sdk: flutter
   just_audio: ^0.10.5
+  material_ui: ^1.0.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
