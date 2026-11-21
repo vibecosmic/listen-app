@@ -1,4 +1,4 @@
-name: listen_player
+name: listen_app
 description: Offline sentence listening prototype (synthetic assets only).
 publish_to: none
 version: 0.1.0+1

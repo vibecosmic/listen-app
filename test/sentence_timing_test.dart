@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:listen_player/sentence_timing.dart';
+import 'package:listen_app/sentence_timing.dart';
 
 void main() {
   final timeline = SentenceTimeline([

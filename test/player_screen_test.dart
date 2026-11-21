@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:listen_player/main.dart';
+import 'package:listen_app/main.dart';
 
 void main() {
   testWidgets('offline preview exposes audio limitation and navigation',
