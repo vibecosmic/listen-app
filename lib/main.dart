@@ -1,37 +1,49 @@
+import 'dart:async';
 import 'dart:convert';
 
-import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:material_ui/material_ui.dart';
 
+import 'player_backend.dart';
 import 'sentence_timing.dart';
 
 void main() => runApp(const ListenApp());
 
 class ListenApp extends StatelessWidget {
-  const ListenApp({super.key});
+  const ListenApp({super.key, this.backendFactory});
+
+  final PlayerBackend Function()? backendFactory;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Listen · offline prototype',
+        title: 'Listen · intensive listening prototype',
         theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.indigo),
-        home: const PlayerScreen(),
+        home: PlayerScreen(backendFactory: backendFactory),
       );
 }
 
 class PlayerScreen extends StatefulWidget {
-  const PlayerScreen({super.key});
+  const PlayerScreen({super.key, this.backendFactory});
+
+  final PlayerBackend Function()? backendFactory;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  final AudioPlayer _player = AudioPlayer();
+  late final PlayerBackend _player;
+  StreamSubscription<Duration>? _positionSub;
+  StreamSubscription<bool>? _playingSub;
+
   SentenceTimeline? _timeline;
   String _language = 'en';
   String? _error;
+  bool _audioReady = false;
+  bool _isPlaying = false;
   int _selected = 0;
+  int _positionMs = 0;
+  int? _durationMs;
   bool _showTranscript = true;
   bool _repeatSentence = false;
   double _speed = 1;
@@ -41,15 +53,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _player.positionStream.listen((position) {
-      final timeline = _timeline;
-      if (!mounted || timeline == null) return;
-      final index = timeline.at(position.inMilliseconds);
-      if (index != _selected && !_repeatSentence && _aMs == null) {
-        setState(() => _selected = index);
-      }
+    _player = widget.backendFactory?.call() ?? JustAudioPlayerBackend();
+    _positionSub = _player.positionStream.listen(_handlePosition);
+    _playingSub = _player.playingStream.listen((playing) {
+      if (!mounted) return;
+      setState(() => _isPlaying = playing);
     });
     _loadLanguage();
+  }
+
+  void _handlePosition(Duration position) {
+    final timeline = _timeline;
+    if (!mounted || timeline == null) return;
+
+    final posMs = position.inMilliseconds;
+    final loopRange = _activeLoopRange(timeline);
+
+    if (loopRange != null && _isPlaying && posMs >= loopRange.$2) {
+      unawaited(_player.seek(Duration(milliseconds: loopRange.$1)));
+      setState(() => _positionMs = loopRange.$1);
+      return;
+    }
+
+    final index = timeline.at(posMs);
+    setState(() {
+      _positionMs = posMs;
+      if (!_repeatSentence && _aMs == null && index != _selected) {
+        _selected = index;
+      }
+    });
+  }
+
+  (int, int)? _activeLoopRange(SentenceTimeline timeline) {
+    if (_aMs != null && _bMs != null) {
+      return (_aMs!, _bMs!);
+    }
+    if (_repeatSentence) {
+      final cue = timeline.cues[_selected];
+      return (cue.startMs, cue.endMs);
+    }
+    return null;
   }
 
   Future<void> _loadLanguage() async {
@@ -59,35 +102,57 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final entries = jsonDecode(raw) as List<dynamic>;
       final cues = entries.map((entry) {
         final value = entry as Map<String, dynamic>;
-        return SentenceCue(value['startMs'] as int, value['endMs'] as int,
-            value['text'] as String);
+        return SentenceCue(
+          value['startMs'] as int,
+          value['endMs'] as int,
+          value['text'] as String,
+        );
       }).toList();
+      final timeline = SentenceTimeline(cues);
+
+      Duration? loadedDuration;
+      String? audioError;
+      var audioReady = false;
+      try {
+        loadedDuration =
+            await _player.loadAsset('assets/sample_$_language.m4a');
+        await _player.setSpeed(_speed);
+        audioReady = true;
+      } catch (error) {
+        audioError = 'Audio unavailable: $error';
+      }
+
       if (!mounted) return;
       setState(() {
-        _timeline = SentenceTimeline(cues);
+        _timeline = timeline;
         _selected = 0;
+        _positionMs = 0;
+        _durationMs = loadedDuration?.inMilliseconds;
         _aMs = null;
         _bMs = null;
         _repeatSentence = false;
-        _error = 'Audio is not bundled yet. Playback is unavailable.';
+        _audioReady = audioReady;
+        _error = audioError;
       });
     } catch (error) {
-      if (mounted) setState(() => _error = 'Cannot load local subtitles: $error');
+      if (!mounted) return;
+      setState(() {
+        _audioReady = false;
+        _error = 'Cannot load local subtitles: $error';
+      });
     }
   }
 
   Future<void> _applyClip() async {
     final timeline = _timeline;
-    if (timeline == null) return;
-    final cue = timeline.cues[_selected];
-    final start = _aMs ?? (_repeatSentence ? cue.startMs : null);
-    final end = _bMs ?? (_repeatSentence ? cue.endMs : null);
+    if (timeline == null || !_audioReady) return;
+    final range = _activeLoopRange(timeline);
     try {
       await _player.setClip(
-        start: start == null ? null : Duration(milliseconds: start),
-        end: end == null ? null : Duration(milliseconds: end),
+        start: range == null ? null : Duration(milliseconds: range.$1),
+        end: range == null ? null : Duration(milliseconds: range.$2),
       );
-      await _player.setLoopMode(start == null ? LoopMode.off : LoopMode.one);
+      await _player.setLoopOne(range != null);
     } catch (error) {
       if (mounted) setState(() => _error = 'Audio not ready: $error');
     }
@@ -96,21 +161,44 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Future<void> _select(int index) async {
     final timeline = _timeline;
     if (timeline == null) return;
+    final startMs = timeline.cues[index].startMs;
     setState(() {
       _selected = index;
-      _aMs = null;
-      _bMs = null;
+      _positionMs = startMs;
+      if (_aMs != null && _bMs != null) {
+        _aMs = null;
+        _bMs = null;
+      }
     });
     await _applyClip();
-    try {
-      await _player.seek(Duration(milliseconds: timeline.cues[index].startMs));
-    } catch (_) {
-      // The subtitle-only checkpoint has no audio source yet.
+    if (_audioReady) {
+      try {
+        await _player.seek(Duration(milliseconds: startMs));
+      } catch (error) {
+        if (mounted) setState(() => _error = 'Seek failed: $error');
+      }
     }
   }
 
+  Future<void> _togglePlayPause() async {
+    if (!_audioReady) return;
+    try {
+      if (_isPlaying) {
+        await _player.pause();
+      } else {
+        await _player.play();
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = 'Playback failed: $error');
+    }
+  }
+
+  String _formatMs(int ms) => '${(ms / 1000).toStringAsFixed(2)}s';
+
   @override
   void dispose() {
+    _positionSub?.cancel();
+    _playingSub?.cancel();
     _player.dispose();
     super.dispose();
   }
@@ -118,12 +206,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   Widget build(BuildContext context) {
     final timeline = _timeline;
+    final totalMs =
+        _durationMs ?? (timeline == null ? 0 : timeline.cues.last.endMs);
     return Scaffold(
       appBar: AppBar(title: const Text('Listen · offline prototype')),
       body: SafeArea(
         child: ListView(padding: const EdgeInsets.all(20), children: [
-          const Text('Subtitle-only development preview; no audio or network.',
-              style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text(
+            'Offline intensive listening prototype (self-made sample audio, no network).',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 12),
           SegmentedButton<String>(
             segments: const [
@@ -142,19 +234,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
               child: Text(_error!, key: const Key('audio-status')),
             ),
           const SizedBox(height: 12),
+          Text(
+            'Position: ${_formatMs(_positionMs)} / ${_formatMs(totalMs)}',
+            key: const Key('position-status'),
+          ),
+          if (_aMs != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                _bMs == null
+                    ? 'A–B: A=${_aMs}ms (select B)'
+                    : 'A–B loop: ${_aMs}ms – ${_bMs}ms',
+                key: const Key('ab-status'),
+              ),
+            ),
+          const SizedBox(height: 12),
           Wrap(spacing: 12, runSpacing: 12, children: [
             FilledButton.tonalIcon(
-              onPressed: timeline == null ? null : () => _select(timeline.previous(_selected)),
+              onPressed: timeline == null
+                  ? null
+                  : () => _select(timeline.previous(_selected)),
               icon: const Icon(Icons.skip_previous),
               label: const Text('Previous'),
             ),
-            FilledButton.tonalIcon(
-              onPressed: null,
-              icon: const Icon(Icons.play_arrow),
-              label: const Text('Play (audio pending)'),
+            FilledButton.icon(
+              onPressed: _audioReady ? _togglePlayPause : null,
+              icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
+              label: Text(_isPlaying ? 'Pause' : 'Play'),
             ),
             FilledButton.tonalIcon(
-              onPressed: timeline == null ? null : () => _select(timeline.next(_selected)),
+              onPressed: timeline == null
+                  ? null
+                  : () => _select(timeline.next(_selected)),
               icon: const Icon(Icons.skip_next),
               label: const Text('Next'),
             ),
@@ -169,7 +280,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             label: '${_speed.toStringAsFixed(2)}×',
             onChanged: (value) async {
               setState(() => _speed = value);
-              await _player.setSpeed(value);
+              if (_audioReady) {
+                await _player.setSpeed(value);
+              }
             },
           ),
           SwitchListTile(
@@ -186,23 +299,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
           Wrap(spacing: 12, children: [
             OutlinedButton(
-              onPressed: timeline == null ? null : () {
-                setState(() => _aMs = timeline.cues[_selected].startMs);
-                _applyClip();
-              },
+              onPressed: timeline == null
+                  ? null
+                  : () {
+                      setState(() {
+                        _aMs = timeline.cues[_selected].startMs;
+                        _bMs = null;
+                        _repeatSentence = false;
+                      });
+                      _applyClip();
+                    },
               child: const Text('Set A'),
             ),
             OutlinedButton(
-              onPressed: timeline == null || _aMs == null ? null : () {
-                final end = timeline.cues[_selected].endMs;
-                try {
-                  timeline.repeatRange(_aMs!, end);
-                  setState(() => _bMs = end);
-                  _applyClip();
-                } on ArgumentError {
-                  setState(() => _error = 'B must be after A.');
-                }
-              },
+              onPressed: timeline == null || _aMs == null
+                  ? null
+                  : () async {
+                      final end = timeline.cues[_selected].endMs;
+                      try {
+                        timeline.repeatRange(_aMs!, end);
+                        setState(() => _bMs = end);
+                        await _applyClip();
+                        if (_audioReady) {
+                          await _player.seek(Duration(milliseconds: _aMs!));
+                        }
+                      } on ArgumentError {
+                        setState(() => _error = 'B must be after A.');
+                      }
+                    },
               child: const Text('Set B'),
             ),
             TextButton(
