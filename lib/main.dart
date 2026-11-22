@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'player_backend.dart';
@@ -50,6 +49,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int? _aMs;
   int? _bMs;
 
+  bool _initialized = false;
+
   @override
   void initState() {
     super.initState();
@@ -59,7 +60,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (!mounted) return;
       setState(() => _isPlaying = playing);
     });
-    _loadLanguage();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_initialized) {
+      _initialized = true;
+      _loadLanguage();
+    }
   }
 
   void _handlePosition(Duration position) {
@@ -96,9 +105,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   Future<void> _loadLanguage() async {
+    final bundle = DefaultAssetBundle.of(context);
     try {
       await _player.stop();
-      final raw = await rootBundle.loadString('assets/sentences_$_language.json');
+      final raw = await bundle.loadString('assets/sentences_$_language.json');
       final entries = jsonDecode(raw) as List<dynamic>;
       final cues = entries.map((entry) {
         final value = entry as Map<String, dynamic>;

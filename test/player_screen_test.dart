@@ -1,9 +1,30 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:listen_app/main.dart';
 import 'package:listen_app/player_backend.dart';
 import 'package:material_ui/material_ui.dart';
+
+class _FakeAssetBundle extends CachingAssetBundle {
+  static const Map<String, String> _strings = {
+    'assets/sentences_en.json':
+        '[{"startMs":0,"endMs":1000,"text":"Hello."},{"startMs":1000,"endMs":2000,"text":"How are you?"}]',
+    'assets/sentences_ja.json':
+        '[{"startMs":0,"endMs":1000,"text":"こんにちは。"},{"startMs":1000,"endMs":2000,"text":"元気ですか。"}]',
+  };
+
+  @override
+  Future<ByteData> load(String key) async {
+    final value = _strings[key];
+    if (value == null) {
+      throw FlutterError('Asset not found: $key');
+    }
+    return ByteData.sublistView(Uint8List.fromList(utf8.encode(value)));
+  }
+}
 
 class FakePlayerBackend implements PlayerBackend {
   FakePlayerBackend({this.failLoad = false});
@@ -83,29 +104,17 @@ class FakePlayerBackend implements PlayerBackend {
   }
 }
 
-Future<void> pumpLoaded(
-  WidgetTester tester, {
-  String expectedText = 'Hello.',
-}) async {
-  for (var i = 0; i < 20; i++) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+Widget _wrapApp(FakePlayerBackend backend) => DefaultAssetBundle(
+      bundle: _FakeAssetBundle(),
+      child: ListenApp(backendFactory: () => backend),
     );
-    await tester.pump();
-    if (find.text(expectedText).evaluate().isNotEmpty) {
-      await tester.pumpAndSettle();
-      return;
-    }
-  }
-  await tester.pumpAndSettle();
-}
 
 void main() {
   testWidgets('loads audio asset, toggles play/pause, and switches language',
       (tester) async {
     final backend = FakePlayerBackend();
-    await tester.pumpWidget(ListenApp(backendFactory: () => backend));
-    await pumpLoaded(tester);
+    await tester.pumpWidget(_wrapApp(backend));
+    await tester.pumpAndSettle();
 
     expect(backend.loadedAssets, ['assets/sample_en.m4a']);
     expect(find.byKey(const Key('audio-status')), findsNothing);
@@ -123,7 +132,7 @@ void main() {
     expect(find.text('Play'), findsOneWidget);
 
     await tester.tap(find.text('日本語'));
-    await pumpLoaded(tester, expectedText: 'こんにちは。');
+    await tester.pumpAndSettle();
     expect(backend.loadedAssets, [
       'assets/sample_en.m4a',
       'assets/sample_ja.m4a',
@@ -134,8 +143,8 @@ void main() {
   testWidgets('sentence navigation, speed, repeat and A-B loop controls work',
       (tester) async {
     final backend = FakePlayerBackend();
-    await tester.pumpWidget(ListenApp(backendFactory: () => backend));
-    await pumpLoaded(tester);
+    await tester.pumpWidget(_wrapApp(backend));
+    await tester.pumpAndSettle();
 
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
@@ -147,7 +156,10 @@ void main() {
 
     await tester.tap(find.text('Repeat selected sentence'));
     await tester.pumpAndSettle();
-    expect(backend.clips.last, (Duration.zero, const Duration(milliseconds: 1000)));
+    expect(
+      backend.clips.last,
+      (Duration.zero, const Duration(milliseconds: 1000)),
+    );
     expect(backend.loopStates.last, isTrue);
 
     await tester.tap(find.text('Play'));
@@ -178,8 +190,8 @@ void main() {
   testWidgets('transcript toggle and graceful audio error fallback',
       (tester) async {
     final backend = FakePlayerBackend(failLoad: true);
-    await tester.pumpWidget(ListenApp(backendFactory: () => backend));
-    await pumpLoaded(tester);
+    await tester.pumpWidget(_wrapApp(backend));
+    await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('audio-status')), findsOneWidget);
     expect(find.text('Hello.'), findsOneWidget);
