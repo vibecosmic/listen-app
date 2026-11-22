@@ -83,12 +83,19 @@ class FakePlayerBackend implements PlayerBackend {
   }
 }
 
+Future<void> pumpLoaded(WidgetTester tester) async {
+  await tester.runAsync(
+    () => Future<void>.delayed(const Duration(milliseconds: 50)),
+  );
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('loads audio asset, toggles play/pause, and switches language',
       (tester) async {
     final backend = FakePlayerBackend();
     await tester.pumpWidget(ListenApp(backendFactory: () => backend));
-    await tester.pumpAndSettle();
+    await pumpLoaded(tester);
 
     expect(backend.loadedAssets, ['assets/sample_en.m4a']);
     expect(find.byKey(const Key('audio-status')), findsNothing);
