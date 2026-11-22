@@ -15,5 +15,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/sample_en.m4a
+    - assets/sample_ja.m4a
     - assets/sentences_en.json
     - assets/sentences_ja.json
