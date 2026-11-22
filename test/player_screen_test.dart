@@ -106,7 +106,7 @@ void main() {
     expect(find.text('Play'), findsOneWidget);
 
     await tester.tap(find.text('日本語'));
-    await tester.pumpAndSettle();
+    await pumpLoaded(tester);
     expect(backend.loadedAssets, [
       'assets/sample_en.m4a',
       'assets/sample_ja.m4a',
@@ -118,7 +118,7 @@ void main() {
       (tester) async {
     final backend = FakePlayerBackend();
     await tester.pumpWidget(ListenApp(backendFactory: () => backend));
-    await tester.pumpAndSettle();
+    await pumpLoaded(tester);
 
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
@@ -162,7 +162,7 @@ void main() {
       (tester) async {
     final backend = FakePlayerBackend(failLoad: true);
     await tester.pumpWidget(ListenApp(backendFactory: () => backend));
-    await tester.pumpAndSettle();
+    await pumpLoaded(tester);
 
     expect(find.byKey(const Key('audio-status')), findsOneWidget);
     expect(find.text('Hello.'), findsOneWidget);
