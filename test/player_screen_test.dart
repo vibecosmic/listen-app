@@ -83,10 +83,20 @@ class FakePlayerBackend implements PlayerBackend {
   }
 }
 
-Future<void> pumpLoaded(WidgetTester tester) async {
-  await tester.runAsync(
-    () => Future<void>.delayed(const Duration(milliseconds: 50)),
-  );
+Future<void> pumpLoaded(
+  WidgetTester tester, {
+  String expectedText = 'Hello.',
+}) async {
+  for (var i = 0; i < 20; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 10)),
+    );
+    await tester.pump();
+    if (find.text(expectedText).evaluate().isNotEmpty) {
+      await tester.pumpAndSettle();
+      return;
+    }
+  }
   await tester.pumpAndSettle();
 }
 
@@ -113,7 +123,7 @@ void main() {
     expect(find.text('Play'), findsOneWidget);
 
     await tester.tap(find.text('日本語'));
-    await pumpLoaded(tester);
+    await pumpLoaded(tester, expectedText: 'こんにちは。');
     expect(backend.loadedAssets, [
       'assets/sample_en.m4a',
       'assets/sample_ja.m4a',
